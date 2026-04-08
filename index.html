@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WordSmith.VanPower</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+<script>
+  (function() {
+    var hash = window.location.hash;
+    if (hash.indexOf('auth_sync=') !== -1) {
+      try {
+        var payloadObj = hash.split('auth_sync=')[1];
+        if (payloadObj) {
+            var payload = decodeURIComponent(payloadObj);
+            var data = JSON.parse(payload);
+            if (data && Array.isArray(data)) {
+              var req = indexedDB.open('firebaseLocalStorageDb');
+              req.onupgradeneeded = function(e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains('firebaseLocalStorage')) {
+                  db.createObjectStore('firebaseLocalStorage');
+                }
+              };
+              req.onsuccess = function(e) {
+                var db = e.target.result;
+                if (!db.objectStoreNames.contains('firebaseLocalStorage')) {
+                   var newVersion = db.version + 1;
+                   db.close();
+                   var upgradeReq = indexedDB.open('firebaseLocalStorageDb', newVersion);
+                   upgradeReq.onupgradeneeded = function(ev) {
+                       ev.target.result.createObjectStore('firebaseLocalStorage');
+                   };
+                   upgradeReq.onsuccess = function(ev) {
+                       writeAndReload(ev.target.result, data);
+                   };
+                } else {
+                   writeAndReload(db, data);
+                }
+              };
+            }
+        }
+      } catch (err) {
+        console.error("SSO inject failed", err);
+        window.location.hash = '';
+      }
+    }
+    function writeAndReload(db, records) {
+      var tx = db.transaction('firebaseLocalStorage', 'readwrite');
+      var store = tx.objectStore('firebaseLocalStorage');
+      var pending = records.length;
+      if (pending === 0) { finish(); return; }
+      records.forEach(function(record) {
+        var putReq = store.put(record.value, record.fbase_key);
+        putReq.onsuccess = function() {
+           pending--; if (pending === 0) finish();
+        };
+        putReq.onerror = function() {
+           pending--; if (pending === 0) finish();
+        }
+      });
+      function finish() {
+        window.location.hash = '';
+        window.location.reload();
+      }
+    }
+  })();
+</script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Nunito', 'sans-serif'],
+              display: ['Fredoka', 'sans-serif'],
+            },
+            colors: {
+              brand: {
+                50: '#eff6ff',
+                100: '#dbeafe',
+                200: '#bfdbfe',
+                300: '#93c5fd',
+                400: '#60a5fa',
+                500: '#3b82f6',
+                600: '#2563eb',
+                700: '#1d4ed8',
+                800: '#1e40af',
+                900: '#1e3a8a',
+              },
+              accent: {
+                light: '#fde68a',
+                DEFAULT: '#f59e0b',
+                dark: '#b45309',
+              }
+            }
+          },
+        },
+      }
+    </script>
+    <style>
+      body {
+        background-color: #f0f4f8;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "html2canvas": "https://esm.sh/html2canvas@1.4.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
