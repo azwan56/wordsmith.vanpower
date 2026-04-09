@@ -49,26 +49,19 @@
     function writeAndReload(db, records) {
       var tx = db.transaction('firebaseLocalStorage', 'readwrite');
       var store = tx.objectStore('firebaseLocalStorage');
-      var pending = records.length;
-      if (pending === 0) { finish(); return; }
       records.forEach(function(record) {
-        var putReq = store.put(record.value, record.fbase_key);
-        putReq.onsuccess = function() {
-           pending--; if (pending === 0) finish();
-        };
-        putReq.onerror = function() {
-           pending--; if (pending === 0) finish();
-        }
+        store.put(record.value, record.fbase_key);
       });
-      // Wait for transaction commit before navigating
+      // Only navigate AFTER the transaction is durably committed.
+      // Navigating mid-transaction aborts the IDB write (Safari/Chrome).
       tx.oncomplete = function() {
-        finish();
-      };
-      function finish() {
-        // Use replace() so the #auth_sync hash is stripped atomically; no double-navigation
         var cleanUrl = window.location.href.split('#')[0];
         window.location.replace(cleanUrl);
-      }
+      };
+      tx.onerror = function() {
+        var cleanUrl = window.location.href.split('#')[0];
+        window.location.replace(cleanUrl);
+      };
     }
   })();
 </script>
