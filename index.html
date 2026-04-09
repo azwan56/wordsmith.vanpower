@@ -60,9 +60,14 @@
            pending--; if (pending === 0) finish();
         }
       });
+      // Wait for transaction commit before navigating
+      tx.oncomplete = function() {
+        finish();
+      };
       function finish() {
-        window.location.hash = '';
-        window.location.reload();
+        // Use replace() so the #auth_sync hash is stripped atomically; no double-navigation
+        var cleanUrl = window.location.href.split('#')[0];
+        window.location.replace(cleanUrl);
       }
     }
   })();
