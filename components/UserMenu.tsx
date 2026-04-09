@@ -91,7 +91,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onOpenAuth }) => {
             Plain <a> navigation — no window.open(), no popup blocking.
           */}
           <a
-            href={buildSSOUrl('https://wordsmith.vanpower.live', ssoPayload)}
+            href={buildSSOUrl('https://mathgenius.vanpower.live', ssoPayload)}
             target="_blank"
             rel="noreferrer"
             className="px-4 py-4 hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-bold border-b border-slate-100 group"
@@ -119,7 +119,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onOpenAuth }) => {
           </a>
 
           <a
-            href="https://vanpower.live"
+            href="https://k12.vanpower.live"
             target="_blank"
             rel="noreferrer"
             className="px-4 py-4 hover:bg-slate-50 flex items-center gap-3 text-slate-700 font-bold border-b border-slate-100 group"
