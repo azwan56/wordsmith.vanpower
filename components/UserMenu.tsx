@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import { logoutFirebase } from '../services/firebaseService';
-import { getAuthDataFromIDB, buildSSOUrl } from '../services/ssoHelper';
+import { getAuthDataFromIDBWithRetry, buildSSOUrl } from '../services/ssoHelper';
 
 interface UserMenuProps {
   user: User | null;
@@ -21,7 +21,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ user, onOpenAuth }) => {
       setSsoPayload(null);
       return;
     }
-    getAuthDataFromIDB().then((data) => {
+    getAuthDataFromIDBWithRetry().then((data) => {
       if (data && data.length > 0) {
         setSsoPayload(encodeURIComponent(JSON.stringify(data)));
       } else {

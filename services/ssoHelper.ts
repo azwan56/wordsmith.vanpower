@@ -42,6 +42,25 @@ export function getAuthDataFromIDB(): Promise<Array<{ fbase_key: string; value: 
 }
 
 /**
+ * Polls IDB for Firebase auth data, retrying until data is found or attempts
+ * are exhausted. Handles the race condition where Firebase hasn't yet written
+ * its token to IDB at the moment of the first call (e.g. right after login).
+ */
+export async function getAuthDataFromIDBWithRetry(
+  maxAttempts = 6,
+  delayMs = 400,
+): Promise<Array<{ fbase_key: string; value: any }> | null> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const data = await getAuthDataFromIDB();
+    if (data && data.length > 0) return data;
+    if (i < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  return null;
+}
+
+/**
  * Builds a cross-app URL with the SSO auth payload appended as a URL hash.
  * Safe to use directly in <a href> — no async needed at click time.
  */
