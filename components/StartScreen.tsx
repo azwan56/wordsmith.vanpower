@@ -8,9 +8,10 @@ interface StartScreenProps {
   onStartCustom: () => void;
   history: SessionRecord[];
   onClearHistory: () => void;
+  onOpenVocabulary: () => void;
 }
 
-const StartScreen: React.FC<StartScreenProps> = ({ currentUser, onStartRandom, onStartCustom, history, onClearHistory }) => {
+const StartScreen: React.FC<StartScreenProps> = ({ currentUser, onStartRandom, onStartCustom, history, onClearHistory, onOpenVocabulary }) => {
 
   // Calculate Stats
   const totalSessions = history.length;
@@ -44,7 +45,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ currentUser, onStartRandom, o
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6 w-full max-w-3xl mb-16">
+      <div className="grid md:grid-cols-3 gap-6 w-full max-w-4xl mb-16">
         {/* Random Batch Option */}
         <button
           onClick={onStartRandom}
@@ -89,6 +90,31 @@ const StartScreen: React.FC<StartScreenProps> = ({ currentUser, onStartRandom, o
           </p>
           <span className="mt-auto font-bold text-accent-dark flex items-center gap-1 group-hover:gap-2 transition-all">
             Create List
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </span>
+        </button>
+
+        {/* Vocabulary Option */}
+        <button
+          onClick={onOpenVocabulary}
+          className="group relative bg-white p-8 rounded-3xl shadow-lg border-2 border-transparent hover:border-purple-200 hover:shadow-xl transition-all text-left flex flex-col items-start overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <svg className="w-32 h-32 text-purple-500" fill="currentColor" viewBox="0 0 24 24"><path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>
+          </div>
+          <div className="bg-purple-100 p-3 rounded-2xl mb-4 text-purple-600">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+            </svg>
+          </div>
+          <h3 className="text-2xl font-bold text-gray-800 mb-2">Ms. Lindsey's Vocabulary</h3>
+          <p className="text-gray-500 mb-6">
+            Build and practice your very own word bank. Review all words you have learned!
+          </p>
+          <span className="mt-auto font-bold text-purple-600 flex items-center gap-1 group-hover:gap-2 transition-all">
+            Open Bank
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
             </svg>

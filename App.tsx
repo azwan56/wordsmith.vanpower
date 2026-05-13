@@ -5,6 +5,7 @@ import FeedbackResult from './components/FeedbackResult';
 import BatchSummary from './components/BatchSummary';
 import StartScreen from './components/StartScreen';
 import CustomWordInput from './components/CustomWordInput';
+import VocabularyScreen from './components/VocabularyScreen';
 import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
 import { getWordBatch, createCustomBatch, evaluateSentence } from './services/geminiService';
@@ -15,7 +16,7 @@ import { WordChallenge, EvaluationResult, BatchResult, SessionRecord } from './t
 
 const DEFAULT_BATCH_SIZE = 10;
 
-type AppState = 'menu' | 'custom-input' | 'playing' | 'summary';
+type AppState = 'menu' | 'custom-input' | 'playing' | 'summary' | 'vocabulary';
 
 function App() {
   // Authentication State
@@ -24,7 +25,7 @@ function App() {
 
   // Navigation State
   const [appState, setAppState] = useState<AppState>('menu');
-  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [sessionMode, setSessionMode] = useState<'random' | 'custom' | 'vocabulary'>('random');
 
   // Batch Data State
   const [wordBatch, setWordBatch] = useState<WordChallenge[]>([]);
@@ -71,12 +72,26 @@ function App() {
     setCurrentIndex(0);
     setCurrentEvaluation(null);
     setCurrentSentence("");
-    setIsCustomMode(false);
+    setSessionMode('random');
+  };
+
+  const openVocabulary = () => {
+    setAppState('vocabulary');
+  };
+
+  const handleStartPractice = (words: WordChallenge[], mode: 'vocabulary') => {
+    setSessionMode(mode);
+    setWordBatch(words);
+    setBatchResults([]);
+    setCurrentIndex(0);
+    setCurrentEvaluation(null);
+    setCurrentSentence("");
+    setAppState('playing');
   };
 
   const startRandomBatch = async () => {
     setIsLoading(true);
-    setIsCustomMode(false);
+    setSessionMode('random');
     // Optimistically switch to playing, but show loading in WordDisplay
     setAppState('playing'); 
     setBatchResults([]);
@@ -104,7 +119,7 @@ function App() {
       // Keep user on custom-input screen while loading...
       const batch = await createCustomBatch(words);
       if (batch.length > 0) {
-        setIsCustomMode(true);
+        setSessionMode('custom');
         setWordBatch(batch);
         setBatchResults([]);
         setCurrentIndex(0);
@@ -158,7 +173,7 @@ function App() {
             id: Date.now().toString(),
             userId: currentUser.uid,
             timestamp: Date.now(),
-            mode: isCustomMode ? 'custom' : 'random',
+            mode: sessionMode,
             results: batchResults
         };
         
@@ -257,7 +272,16 @@ function App() {
                     onStartCustom={openCustomInput} 
                     history={history}
                     onClearHistory={handleClearHistory}
+                    onOpenVocabulary={openVocabulary}
                 />
+                )}
+
+                {appState === 'vocabulary' && (
+                    <VocabularyScreen 
+                        currentUser={currentUser}
+                        onBack={goToMenu}
+                        onStartPractice={handleStartPractice}
+                    />
                 )}
 
                 {appState === 'custom-input' && (
@@ -273,7 +297,7 @@ function App() {
                         results={batchResults}
                         history={history}
                         onRestart={goToMenu} 
-                        isCustomMode={isCustomMode}
+                        isCustomMode={sessionMode !== 'random'}
                         currentUser={currentUser}
                     />
                 )}
