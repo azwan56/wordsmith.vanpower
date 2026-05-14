@@ -1,8 +1,4 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { WordChallenge, EvaluationResult } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const MODEL_NAME = "gemini-3-flash-preview";
 
 /**
  * Expanded WORD_BANK to 500 words for 10-12 year olds.
@@ -604,21 +600,6 @@ const WORD_BANK: WordChallenge[] = [
   { word: "Duty", partOfSpeech: "noun", definition: "A moral or legal obligation.", synonyms: ["obligation", "responsibility"] }
 ];
 
-const evaluationSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    score: { type: Type.INTEGER, description: "Rating from 1 to 5 stars" },
-    feedback: { type: Type.STRING, description: "A friendly, encouraging note about the sentence." },
-    correction: { type: Type.STRING, description: "A grammatically corrected version of the sentence, if needed. Otherwise, empty string." },
-    betterExamples: { 
-      type: Type.ARRAY, 
-      items: { type: Type.STRING },
-      description: "Exactly two creative and high-quality example sentences using the target word." 
-    }
-  },
-  required: ["score", "feedback", "betterExamples"],
-};
-
 export const getWordBatch = async (count: number): Promise<WordChallenge[]> => {
   const array = [...WORD_BANK];
   for (let i = array.length - 1; i > 0; i--) {
@@ -633,36 +614,19 @@ export const createCustomBatch = async (words: string[]): Promise<WordChallenge[
   const cleanWords = words.map(w => w.trim()).filter(w => w.length > 0 && w.length < 30).slice(0, 50);
   if (cleanWords.length === 0) return [];
 
-  const schema: Schema = {
-    type: Type.ARRAY,
-    items: {
-      type: Type.OBJECT,
-      properties: {
-        word: { type: Type.STRING },
-        partOfSpeech: { type: Type.STRING },
-        definition: { type: Type.STRING },
-        synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
-      },
-      required: ["word", "partOfSpeech", "definition", "synonyms"],
-    }
-  };
-
   try {
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: `Provide dictionary data for these words: ${JSON.stringify(cleanWords)}`,
-      config: {
-        systemInstruction: "You are a friendly junior dictionary for 10-12 year olds. Always provide simple definitions and helpful synonyms. Output strictly valid JSON.",
-        responseMimeType: "application/json",
-        responseSchema: schema,
-        temperature: 0.1,
-        thinkingConfig: { thinkingBudget: 0 }
-      },
+    const res = await fetch('/api/customBatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words: cleanWords })
     });
 
-    const text = response.text;
-    if (!text) throw new Error("No response from AI");
-    return JSON.parse(text) as WordChallenge[];
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status}`);
+    }
+
+    const data = await res.json();
+    return data as WordChallenge[];
   } catch (error) {
     console.error("Custom batch generation failed", error);
     return cleanWords.map(w => ({
@@ -676,30 +640,17 @@ export const createCustomBatch = async (words: string[]): Promise<WordChallenge[
 
 export const evaluateSentence = async (word: string, sentence: string): Promise<EvaluationResult> => {
   try {
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: `Word: "${word}"\nStudent's Sentence: "${sentence}"`,
-      config: {
-        systemInstruction: `You are a supportive and professional English writing coach for students aged 10-12. 
-        Your goal is to provide constructive feedback on their use of vocabulary and grammar.
-        RULES:
-        1. Always be encouraging.
-        2. Score from 1 to 5 (5 is perfect).
-        3. ALWAYS provide exactly two 'betterExamples' showing creative use of the word.
-        4. If there is a grammatical error, provide a 'correction'.
-        5. If the sentence is perfect, celebrate their creativity in 'feedback'.
-        6. Do not refuse to answer. If the sentence is confusing, give a 1-star and explain why nicely.`,
-        responseMimeType: "application/json",
-        responseSchema: evaluationSchema,
-        temperature: 0.7,
-        thinkingConfig: { thinkingBudget: 0 }
-      },
+    const res = await fetch('/api/evaluate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word, sentence })
     });
 
-    const text = response.text;
-    if (!text) throw new Error("Empty response");
-    
-    const result = JSON.parse(text) as EvaluationResult;
+    if (!res.ok) {
+      throw new Error(`API error: ${res.status}`);
+    }
+
+    const result = await res.json() as EvaluationResult;
     
     if (!result.betterExamples || result.betterExamples.length === 0) {
       result.betterExamples = [
