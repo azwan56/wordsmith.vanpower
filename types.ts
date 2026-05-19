@@ -3,6 +3,8 @@ export interface WordChallenge {
   partOfSpeech: string;
   definition: string;
   synonyms: string[];
+  antonyms?: string[]; // newly added for explanation mode
+  example?: string;    // newly added for explanation mode
 }
 
 export interface EvaluationResult {
@@ -39,8 +41,20 @@ export interface VocabularyEntry {
   partOfSpeech: string;
   definition: string;
   synonyms: string[];
+  antonyms?: string[];
+  example?: string;
   addedAt: number; // timestamp when added
   batchId: string; // which batch this word was added in
+  docId?: string; // Firestore document ID
+  addedBy?: string; // uid of user who added it
+  addedByName?: string; // display name of who added
+}
+
+export interface PracticeRecord {
+  word: string; // lowercase key
+  bestScore: number; // highest score achieved (1-5)
+  lastPracticedAt: number;
+  attempts: number; // total number of times practiced
 }
 
 export interface VocabularyBatch {
@@ -58,4 +72,10 @@ export interface UserProfile {
   color: string; // TailWind color name e.g. 'blue', 'green', 'purple'
   createdAt: number;
   discordWebhookUrl?: string;
+}
+
+export interface SmartWordSelection {
+  unpracticed: VocabularyEntry[]; // words user hasn't tried
+  needsWork: VocabularyEntry[];   // words scored < 4
+  mastered: VocabularyEntry[];    // words scored >= 4
 }

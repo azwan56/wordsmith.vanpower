@@ -660,11 +660,11 @@ export const evaluateSentence = async (word: string, sentence: string): Promise<
     }
     
     return result;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Evaluation error:", error);
     return {
       score: 3,
-      feedback: "I received your sentence! My connection is a bit slow right now, but keep up the great effort!",
+      feedback: `I received your sentence! But there was an error connecting to the server: ${error.message}. Please check the console for details.`,
       betterExamples: [
         `The ${word} child went to the park.`,
         `We should always try to be ${word} in our work.`

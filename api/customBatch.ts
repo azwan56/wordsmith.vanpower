@@ -32,8 +32,10 @@ export default async function handler(req: any, res: any) {
           partOfSpeech: { type: Type.STRING },
           definition: { type: Type.STRING },
           synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
+          antonyms: { type: Type.ARRAY, items: { type: Type.STRING }, description: "List of antonyms" },
+          example: { type: Type.STRING, description: "A simple and helpful example sentence using the word." },
         },
-        required: ["word", "partOfSpeech", "definition", "synonyms"],
+        required: ["word", "partOfSpeech", "definition", "synonyms", "antonyms", "example"],
       }
     };
 
@@ -41,7 +43,7 @@ export default async function handler(req: any, res: any) {
       model: MODEL_NAME,
       contents: `Provide dictionary data for these words: ${JSON.stringify(cleanWords)}`,
       config: {
-        systemInstruction: "You are a friendly junior dictionary for 10-12 year olds. Always provide simple definitions and helpful synonyms. Output strictly valid JSON.",
+        systemInstruction: "You are a friendly junior dictionary for 10-12 year olds. Always provide simple definitions, helpful synonyms, antonyms, and a clear example sentence. Output strictly valid JSON.",
         responseMimeType: "application/json",
         responseSchema: schema,
         temperature: 0.1,

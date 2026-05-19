@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import { VocabularyEntry, WordChallenge } from '../types';
-import { getUserVocabulary, deleteVocabularyWord, clearUserVocabulary, addVocabularyWords, getUserVocabBatches } from '../services/storageService';
+import { getSharedVocabulary, deleteSharedVocabularyWord, clearSharedVocabulary, addSharedVocabularyWords, getSmartWordSelection } from '../services/vocabularyService';
 import { createCustomBatch } from '../services/geminiService';
+import FlashcardDisplay from './FlashcardDisplay';
 
 interface VocabularyScreenProps {
   currentUser: User;
@@ -15,13 +16,17 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
   const [isAdding, setIsAdding] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isFlashcardMode, setIsFlashcardMode] = useState(false);
 
   useEffect(() => {
     loadVocabulary();
   }, [currentUser]);
 
-  const loadVocabulary = () => {
-    setVocabulary(getUserVocabulary(currentUser.uid));
+  const loadVocabulary = async () => {
+    setIsLoading(true);
+    const vocab = await getSharedVocabulary();
+    setVocabulary(vocab);
+    setIsLoading(false);
   };
 
   const handleAddWords = async () => {
@@ -40,8 +45,8 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
           addedAt: Date.now(),
           batchId: '', // Will be set by storage service
         }));
-        addVocabularyWords(currentUser.uid, entries, `Added ${new Date().toLocaleDateString()}`);
-        loadVocabulary();
+        await addSharedVocabularyWords(currentUser.uid, currentUser.displayName || 'Scholar', entries, `Added ${new Date().toLocaleDateString()}`);
+        await loadVocabulary();
         setInputText("");
         setIsAdding(false);
       }
@@ -52,54 +57,32 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
     }
   };
 
-  const handleDelete = (word: string) => {
-    if (window.confirm(`Remove "${word}" from your vocabulary?`)) {
-      setVocabulary(deleteVocabularyWord(currentUser.uid, word));
+  const handleDelete = async (word: string, docId?: string) => {
+    if (!docId) return;
+    if (window.confirm(`Remove "${word}" from the shared vocabulary?`)) {
+      await deleteSharedVocabularyWord(docId);
+      await loadVocabulary();
     }
   };
 
-  const handleClear = () => {
-    if (window.confirm("Are you sure you want to clear your entire vocabulary?")) {
-      clearUserVocabulary(currentUser.uid);
-      loadVocabulary();
+  const handleClear = async () => {
+    if (window.confirm("Are you sure you want to clear ALL shared vocabulary? This affects all users.")) {
+      await clearSharedVocabulary();
+      await loadVocabulary();
     }
   };
 
-  const startRandom10 = () => {
+  const startSmartPractice = async () => {
     if (vocabulary.length === 0) return;
-    const array = [...vocabulary];
-    for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [array[i], array[j]] = [array[j], array[i]];
-    }
-    const selected = array.slice(0, 10).map(v => ({
-      word: v.word,
-      partOfSpeech: v.partOfSpeech,
-      definition: v.definition,
-      synonyms: v.synonyms
-    }));
+    setIsLoading(true);
+    const selected = await getSmartWordSelection(currentUser.uid, 10);
+    setIsLoading(false);
     onStartPractice(selected, 'vocabulary');
   };
 
-  const startLatestBatch = () => {
-    const batches = getUserVocabBatches(currentUser.uid);
-    if (batches.length === 0) return;
-    // Get the most recent batch
-    const latestBatch = batches.reduce((latest, current) => 
-      current.addedAt > latest.addedAt ? current : latest
-    , batches[0]);
-
-    const wordsInLatestBatch = vocabulary.filter(v => v.batchId === latestBatch.id);
-    if (wordsInLatestBatch.length === 0) return;
-
-    const selected = wordsInLatestBatch.map(v => ({
-      word: v.word,
-      partOfSpeech: v.partOfSpeech,
-      definition: v.definition,
-      synonyms: v.synonyms
-    }));
-    onStartPractice(selected, 'vocabulary');
-  };
+  if (isFlashcardMode) {
+    return <FlashcardDisplay vocabulary={vocabulary} onBack={() => setIsFlashcardMode(false)} />;
+  }
 
   return (
     <div className="w-full max-w-4xl mx-auto mt-8 animate-fade-in-up">
@@ -171,32 +154,33 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
       {vocabulary.length > 0 && (
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           <button
-            onClick={startRandom10}
-            className="bg-white p-6 rounded-3xl shadow-sm border-2 border-transparent hover:border-brand-200 hover:shadow-md transition-all text-left flex items-center gap-4 group"
+            onClick={startSmartPractice}
+            disabled={isLoading}
+            className="bg-white p-6 rounded-3xl shadow-sm border-2 border-transparent hover:border-brand-200 hover:shadow-md transition-all text-left flex items-center gap-4 group disabled:opacity-50"
           >
-            <div className="bg-brand-100 text-brand-600 p-4 rounded-2xl group-hover:scale-110 transition-transform">
+            <div className="bg-brand-100 text-brand-600 p-4 rounded-2xl group-hover:scale-110 transition-transform flex-shrink-0">
                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
-                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                </svg>
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-800">Practice Random 10</h3>
-              <p className="text-gray-500 text-sm">Review a random mix from your bank.</p>
+              <h3 className="text-xl font-bold text-gray-800">Smart Practice</h3>
+              <p className="text-gray-500 text-sm">Focuses on weak words and new additions.</p>
             </div>
           </button>
 
           <button
-            onClick={startLatestBatch}
+            onClick={() => setIsFlashcardMode(true)}
             className="bg-white p-6 rounded-3xl shadow-sm border-2 border-transparent hover:border-accent-200 hover:shadow-md transition-all text-left flex items-center gap-4 group"
           >
-            <div className="bg-accent-light text-accent-dark p-4 rounded-2xl group-hover:scale-110 transition-transform">
+            <div className="bg-accent-light text-accent-dark p-4 rounded-2xl group-hover:scale-110 transition-transform flex-shrink-0">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
               </svg>
             </div>
             <div>
-              <h3 className="text-xl font-bold text-gray-800">Practice Latest Batch</h3>
-              <p className="text-gray-500 text-sm">Focus on the words you just added.</p>
+              <h3 className="text-xl font-bold text-gray-800">Word Explanation</h3>
+              <p className="text-gray-500 text-sm">Flashcards with meaning, TTS and examples.</p>
             </div>
           </button>
         </div>
@@ -232,9 +216,12 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
                     <span className="text-xs font-medium text-brand-600 uppercase tracking-wider">{entry.partOfSpeech}</span>
                   </div>
                   <p className="text-sm text-gray-500 mt-1">{entry.definition}</p>
+                  {entry.addedByName && (
+                    <p className="text-xs text-gray-400 mt-1">Added by: {entry.addedByName}</p>
+                  )}
                 </div>
                 <button 
-                  onClick={() => handleDelete(entry.word)}
+                  onClick={() => handleDelete(entry.word, entry.docId)}
                   className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-2"
                   title="Remove word"
                 >

@@ -10,6 +10,7 @@ import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
 import { getWordBatch, createCustomBatch, evaluateSentence } from './services/geminiService';
 import { saveSession, getUserHistory, clearUserHistory } from './services/storageService';
+import { updatePracticeRecord } from './services/vocabularyService';
 import { auth } from './services/firebaseService';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { WordChallenge, EvaluationResult, BatchResult, SessionRecord } from './types';
@@ -153,6 +154,12 @@ function App() {
           evaluation: result 
         }
       ]);
+
+      // If user is logged in and practicing, update their practice record
+      if (currentUser) {
+        // Do not await, let it run in background
+        updatePracticeRecord(currentUser.uid, currentWord.word, result.score);
+      }
 
     } catch (error) {
       console.error("Failed to evaluate", error);
