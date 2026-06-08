@@ -1,6 +1,7 @@
 import React from 'react';
-import { SessionRecord } from '../types';
+import { SessionRecord, StreakData } from '../types';
 import { User } from 'firebase/auth';
+import StreakBadge from './StreakBadge';
 
 interface StartScreenProps {
   currentUser: User;
@@ -9,9 +10,22 @@ interface StartScreenProps {
   history: SessionRecord[];
   onClearHistory: () => void;
   onOpenVocabulary: () => void;
+  onOpenReviewQuiz: () => void;
+  onOpenAchievements: () => void;
+  streak: StreakData;
 }
 
-const StartScreen: React.FC<StartScreenProps> = ({ currentUser, onStartRandom, onStartCustom, history, onClearHistory, onOpenVocabulary }) => {
+const StartScreen: React.FC<StartScreenProps> = ({ 
+  currentUser, 
+  onStartRandom, 
+  onStartCustom, 
+  history, 
+  onClearHistory, 
+  onOpenVocabulary,
+  onOpenReviewQuiz,
+  onOpenAchievements,
+  streak
+}) => {
 
   // Calculate Stats
   const totalSessions = history.length;
@@ -32,12 +46,26 @@ const StartScreen: React.FC<StartScreenProps> = ({ currentUser, onStartRandom, o
 
   return (
     <div className="w-full max-w-4xl mx-auto px-4 py-8 flex flex-col items-center animate-fade-in-up">
-      <div className="text-center mb-10">
-        <div className="inline-block px-4 py-1.5 bg-brand-50 rounded-full text-brand-600 font-bold text-sm mb-4">
-            Welcome back, {currentUser.displayName || 'Wordsmith'}!
+      <div className="text-center mb-10 w-full relative">
+        <div className="flex justify-between items-start mb-4">
+          <div className="inline-block px-4 py-1.5 bg-brand-50 rounded-full text-brand-600 font-bold text-sm">
+              Welcome back, {currentUser.displayName || 'Wordsmith'}!
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <StreakBadge streak={streak} />
+            <button 
+              onClick={onOpenAchievements}
+              className="text-xs font-bold text-gray-500 hover:text-brand-600 transition-colors flex items-center gap-1 bg-white px-3 py-1.5 rounded-full border border-gray-200 shadow-sm"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-yellow-500">
+                <path fillRule="evenodd" d="M10.868 2.884c-.321-.772-1.415-.772-1.736 0l-1.83 4.401-4.753.381c-.833.067-1.171 1.107-.536 1.651l3.62 3.102-1.106 4.637c-.194.813.691 1.456 1.405 1.02L10 15.591l4.069 2.485c.713.436 1.598-.207 1.404-1.02l-1.106-4.637 3.62-3.102c.635-.544.297-1.584-.536-1.65l-4.752-.382-1.831-4.401z" clipRule="evenodd" />
+              </svg>
+              Achievements
+            </button>
+          </div>
         </div>
         <h2 className="text-3xl font-display font-bold text-gray-800 mb-4">
-          Ready to Write?
+          Ready to Practice?
         </h2>
         <p className="text-xl text-gray-600 max-w-lg mx-auto">
           Expand your vocabulary and become a master storyteller. 
@@ -45,7 +73,7 @@ const StartScreen: React.FC<StartScreenProps> = ({ currentUser, onStartRandom, o
         </p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6 w-full max-w-4xl mb-16">
+      <div className="grid md:grid-cols-2 gap-6 w-full max-w-4xl mb-16">
         {/* Random Batch Option */}
         <button
           onClick={onStartRandom}
@@ -109,12 +137,37 @@ const StartScreen: React.FC<StartScreenProps> = ({ currentUser, onStartRandom, o
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
             </svg>
           </div>
-          <h3 className="text-2xl font-bold text-gray-800 mb-2">Ms. Lindsey's Vocabulary</h3>
+          <h3 className="text-2xl font-bold text-gray-800 mb-2">My Word Bank</h3>
           <p className="text-gray-500 mb-6">
             Build and practice your very own word bank. Review all words you have learned!
           </p>
           <span className="mt-auto font-bold text-purple-600 flex items-center gap-1 group-hover:gap-2 transition-all">
             Open Bank
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </span>
+        </button>
+
+        {/* Review Quiz Option */}
+        <button
+          onClick={onOpenReviewQuiz}
+          className="group relative bg-white p-8 rounded-3xl shadow-lg border-2 border-transparent hover:border-orange-200 hover:shadow-xl transition-all text-left flex flex-col items-start overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <svg className="w-32 h-32 text-orange-500" fill="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+          </div>
+          <div className="bg-orange-100 p-3 rounded-2xl mb-4 text-orange-600 flex justify-between w-full items-start relative">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </div>
+          <h3 className="text-2xl font-bold text-gray-800 mb-2">Review Quiz</h3>
+          <p className="text-gray-500 mb-6">
+            Test your memory with 4 fun interactive quiz types. Check if your brain remembers the words!
+          </p>
+          <span className="mt-auto font-bold text-orange-600 flex items-center gap-1 group-hover:gap-2 transition-all">
+            Start Quiz
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
             </svg>

@@ -55,6 +55,10 @@ export interface PracticeRecord {
   bestScore: number; // highest score achieved (1-5)
   lastPracticedAt: number;
   attempts: number; // total number of times practiced
+  // SRS (Spaced Repetition) fields
+  reviewInterval: number;   // days until next review (default 1)
+  easeFactor: number;        // SM-2 ease factor (default 2.5)
+  nextReviewDate: number;    // timestamp of next scheduled review
 }
 
 export interface VocabularyBatch {
@@ -79,3 +83,48 @@ export interface SmartWordSelection {
   needsWork: VocabularyEntry[];   // words scored < 4
   mastered: VocabularyEntry[];    // words scored >= 4
 }
+
+// --- Quiz Types ---
+
+export type QuizType = 'synonym' | 'antonym' | 'definition' | 'fill-blank';
+
+export interface QuizQuestion {
+  type: QuizType;
+  word: string;
+  prompt: string;
+  options?: string[];        // for multiple choice
+  correctAnswer: string;
+  explanation: string;
+}
+
+export interface QuizResult {
+  question: QuizQuestion;
+  userAnswer: string;
+  isCorrect: boolean;
+  timeTaken: number;         // milliseconds
+}
+
+// --- Streak & Achievements ---
+
+export interface StreakData {
+  current: number;
+  longest: number;
+  lastPracticeDate: string;  // YYYY-MM-DD format
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;              // emoji
+  unlockedAt?: number;       // timestamp, undefined = locked
+}
+
+export const ALL_ACHIEVEMENTS: Omit<Achievement, 'unlockedAt'>[] = [
+  { id: 'first_words', name: 'First Words', description: 'Complete your first practice session', icon: '🌱' },
+  { id: 'star_collector', name: 'Star Collector', description: 'Earn 50 total stars', icon: '⭐' },
+  { id: 'on_fire', name: 'On Fire', description: 'Practice for 3 days in a row', icon: '🔥' },
+  { id: 'vocab_master', name: 'Vocabulary Master', description: 'Master 25 words (score ≥ 4)', icon: '🏆' },
+  { id: 'word_wizard', name: 'Word Wizard', description: 'Practice 100 total words', icon: '📚' },
+  { id: 'perfect_session', name: 'Perfect Session', description: 'Get 5/5 on every word in a batch', icon: '💯' },
+];

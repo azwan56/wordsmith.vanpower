@@ -6,18 +6,22 @@ import BatchSummary from './components/BatchSummary';
 import StartScreen from './components/StartScreen';
 import CustomWordInput from './components/CustomWordInput';
 import VocabularyScreen from './components/VocabularyScreen';
+import ReviewQuizScreen from './components/ReviewQuizScreen';
+import AchievementsPanel from './components/AchievementsPanel';
+import AchievementToast from './components/AchievementToast';
 import AuthModal from './components/AuthModal';
 import UserMenu from './components/UserMenu';
 import { getWordBatch, createCustomBatch, evaluateSentence } from './services/geminiService';
 import { saveSession, getUserHistory, clearUserHistory } from './services/storageService';
-import { updatePracticeRecord } from './services/vocabularyService';
+import { updatePracticeRecord, getMasteredWordCount } from './services/vocabularyService';
+import { getStreak, updateStreak, getAchievements, checkAndUnlockAchievements } from './services/streakService';
 import { auth } from './services/firebaseService';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { WordChallenge, EvaluationResult, BatchResult, SessionRecord } from './types';
+import { WordChallenge, EvaluationResult, BatchResult, SessionRecord, StreakData, Achievement, QuizResult } from './types';
 
 const DEFAULT_BATCH_SIZE = 10;
 
-type AppState = 'menu' | 'custom-input' | 'playing' | 'summary' | 'vocabulary';
+type AppState = 'menu' | 'custom-input' | 'playing' | 'summary' | 'vocabulary' | 'review-quiz' | 'achievements';
 
 function App() {
   // Authentication State
@@ -44,6 +48,12 @@ function App() {
   const [currentEvaluation, setCurrentEvaluation] = useState<EvaluationResult | null>(null);
   const [currentSentence, setCurrentSentence] = useState("");
 
+  // Streak & Achievement State
+  const [streak, setStreak] = useState<StreakData>({ current: 0, longest: 0, lastPracticeDate: '' });
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [toastAchievement, setToastAchievement] = useState<Achievement | null>(null);
+  const [toastQueue, setToastQueue] = useState<Achievement[]>([]);
+
   // Listen to Firebase Auth
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -52,17 +62,64 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // When user logs in, load their history
+  // When user logs in, load their history + streak + achievements
   useEffect(() => {
     if (currentUser) {
       setHistory(getUserHistory(currentUser.uid));
       setAppState('menu'); // Reset to menu on login
+      // Load streak & achievements
+      getStreak(currentUser.uid).then(setStreak);
+      getAchievements(currentUser.uid).then(setAchievements);
     } else {
       setHistory([]);
       setWordBatch([]);
       setBatchResults([]);
+      setStreak({ current: 0, longest: 0, lastPracticeDate: '' });
+      setAchievements([]);
     }
   }, [currentUser]);
+
+  // Process achievement toast queue
+  useEffect(() => {
+    if (!toastAchievement && toastQueue.length > 0) {
+      setToastAchievement(toastQueue[0]);
+      setToastQueue(prev => prev.slice(1));
+    }
+  }, [toastAchievement, toastQueue]);
+
+  // Helper: run post-session streak + achievement checks
+  const runPostSessionChecks = async (latestResults?: BatchResult[]) => {
+    if (!currentUser) return;
+    try {
+      const newStreak = await updateStreak(currentUser.uid);
+      setStreak(newStreak);
+
+      const allHistory = getUserHistory(currentUser.uid);
+      const totalSessions = allHistory.length;
+      const totalWords = allHistory.reduce((acc, s) => acc + s.results.length, 0);
+      const totalStars = allHistory.reduce((acc, s) =>
+        acc + s.results.reduce((sAcc, r) => sAcc + r.evaluation.score, 0), 0);
+      const masteredWords = await getMasteredWordCount(currentUser.uid);
+
+      const newlyUnlocked = await checkAndUnlockAchievements(currentUser.uid, {
+        totalSessions,
+        totalWords,
+        totalStars,
+        masteredWords,
+        currentStreak: newStreak.current,
+        latestBatchResults: latestResults,
+      });
+
+      if (newlyUnlocked.length > 0) {
+        setToastQueue(prev => [...prev, ...newlyUnlocked]);
+        // Refresh achievements list
+        const updated = await getAchievements(currentUser.uid);
+        setAchievements(updated);
+      }
+    } catch (error) {
+      console.error('Post-session checks failed:', error);
+    }
+  };
 
   // --- App Actions ---
 
@@ -186,9 +243,25 @@ function App() {
         
         const updatedHistory = saveSession(newSession);
         setHistory(updatedHistory);
+
+        // Run post-session checks (streak + achievements)
+        runPostSessionChecks(batchResults);
       }
       setAppState('summary');
     }
+  };
+
+  const handleQuizComplete = (quizResults: QuizResult[]) => {
+    // Run streak/achievement checks after quiz too
+    runPostSessionChecks();
+  };
+
+  const openReviewQuiz = () => {
+    setAppState('review-quiz');
+  };
+
+  const openAchievements = () => {
+    setAppState('achievements');
   };
 
   const handleClearHistory = () => {
@@ -280,6 +353,9 @@ function App() {
                     history={history}
                     onClearHistory={handleClearHistory}
                     onOpenVocabulary={openVocabulary}
+                    onOpenReviewQuiz={openReviewQuiz}
+                    onOpenAchievements={openAchievements}
+                    streak={streak}
                 />
                 )}
 
@@ -288,6 +364,22 @@ function App() {
                         currentUser={currentUser}
                         onBack={goToMenu}
                         onStartPractice={handleStartPractice}
+                        onOpenReviewQuiz={openReviewQuiz}
+                    />
+                )}
+
+                {appState === 'review-quiz' && (
+                    <ReviewQuizScreen
+                        currentUser={currentUser}
+                        onBack={goToMenu}
+                        onComplete={handleQuizComplete}
+                    />
+                )}
+
+                {appState === 'achievements' && (
+                    <AchievementsPanel
+                        achievements={achievements}
+                        onClose={goToMenu}
                     />
                 )}
 
@@ -344,8 +436,13 @@ function App() {
                 )}
             </>
         )}
-        
       </main>
+
+      {/* Achievement Toast */}
+      <AchievementToast
+        achievement={toastAchievement}
+        onDismiss={() => setToastAchievement(null)}
+      />
 
       {/* Footer */}
       <footer className="bg-slate-50 border-t border-slate-100 py-6 mt-auto">

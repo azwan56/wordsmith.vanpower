@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import { VocabularyEntry, WordChallenge } from '../types';
-import { getSharedVocabulary, deleteSharedVocabularyWord, clearSharedVocabulary, addSharedVocabularyWords, getSmartWordSelection } from '../services/vocabularyService';
+import { getSharedVocabulary, deleteSharedVocabularyWord, clearSharedVocabulary, addSharedVocabularyWords, getSmartWordSelection, getWordsDueForReview } from '../services/vocabularyService';
 import { createCustomBatch } from '../services/geminiService';
 import FlashcardDisplay from './FlashcardDisplay';
 
@@ -9,14 +9,17 @@ interface VocabularyScreenProps {
   currentUser: User;
   onBack: () => void;
   onStartPractice: (words: WordChallenge[], mode: 'vocabulary') => void;
+  onOpenReviewQuiz: () => void;
 }
 
-const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack, onStartPractice }) => {
+const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack, onStartPractice, onOpenReviewQuiz }) => {
   const [vocabulary, setVocabulary] = useState<VocabularyEntry[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isFlashcardMode, setIsFlashcardMode] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [dueCount, setDueCount] = useState(0);
 
   useEffect(() => {
     loadVocabulary();
@@ -24,9 +27,29 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
 
   const loadVocabulary = async () => {
     setIsLoading(true);
-    const vocab = await getSharedVocabulary();
-    setVocabulary(vocab);
-    setIsLoading(false);
+    setLoadError(null);
+    try {
+      const vocab = await getSharedVocabulary();
+      setVocabulary(vocab);
+      
+      const dueResult = await getWordsDueForReview(currentUser.uid);
+      setDueCount(dueResult.count);
+    } catch (error: any) {
+      console.error('[VocabularyScreen] Error loading vocabulary:', error);
+      const code = error?.code || '';
+      if (code === 'permission-denied') {
+        setLoadError('Permission denied. Please make sure you are logged in and try again.');
+      } else if (code === 'failed-precondition') {
+        setLoadError('Database index required. Please contact the administrator.');
+      } else if (code === 'unavailable' || code === 'deadline-exceeded') {
+        setLoadError('Network issue. Please check your connection and try again.');
+      } else {
+        setLoadError(`Failed to load vocabulary: ${error?.message || 'Unknown error'}. Tap retry to try again.`);
+      }
+      setVocabulary([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleAddWords = async () => {
@@ -100,7 +123,7 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
             <h2 className="text-3xl font-display font-bold text-gray-800">
               Ms. Lindsey's Vocabulary
             </h2>
-            <p className="text-gray-500">You have {vocabulary.length} words in your bank.</p>
+            <p className="text-gray-500">{isLoading ? 'Loading...' : `${vocabulary.length} words in the shared bank`}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -152,49 +175,100 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
       )}
 
       {vocabulary.length > 0 && (
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
+        <div className="grid md:grid-cols-3 gap-6 mb-8">
           <button
             onClick={startSmartPractice}
             disabled={isLoading}
-            className="bg-white p-6 rounded-3xl shadow-sm border-2 border-transparent hover:border-brand-200 hover:shadow-md transition-all text-left flex items-center gap-4 group disabled:opacity-50"
+            className="bg-white p-6 rounded-3xl shadow-sm border-2 border-transparent hover:border-brand-200 hover:shadow-md transition-all text-left flex flex-col items-start gap-4 group disabled:opacity-50 relative"
           >
-            <div className="bg-brand-100 text-brand-600 p-4 rounded-2xl group-hover:scale-110 transition-transform flex-shrink-0">
+            {dueCount > 0 && (
+              <span className="absolute top-4 right-4 bg-orange-100 text-orange-600 font-bold text-xs px-2 py-1 rounded-full animate-pulse border border-orange-200 shadow-sm">
+                {dueCount} Due
+              </span>
+            )}
+            <div className="bg-brand-100 text-brand-600 p-4 rounded-2xl group-hover:scale-110 transition-transform">
                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                </svg>
             </div>
             <div>
               <h3 className="text-xl font-bold text-gray-800">Smart Practice</h3>
-              <p className="text-gray-500 text-sm">Focuses on weak words and new additions.</p>
+              <p className="text-gray-500 text-sm mt-1">Write sentences. Focuses on weak words and new additions.</p>
             </div>
           </button>
 
           <button
             onClick={() => setIsFlashcardMode(true)}
-            className="bg-white p-6 rounded-3xl shadow-sm border-2 border-transparent hover:border-accent-200 hover:shadow-md transition-all text-left flex items-center gap-4 group"
+            className="bg-white p-6 rounded-3xl shadow-sm border-2 border-transparent hover:border-accent-200 hover:shadow-md transition-all text-left flex flex-col items-start gap-4 group"
           >
-            <div className="bg-accent-light text-accent-dark p-4 rounded-2xl group-hover:scale-110 transition-transform flex-shrink-0">
+            <div className="bg-accent-light text-accent-dark p-4 rounded-2xl group-hover:scale-110 transition-transform">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
               </svg>
             </div>
             <div>
               <h3 className="text-xl font-bold text-gray-800">Word Explanation</h3>
-              <p className="text-gray-500 text-sm">Flashcards with meaning, TTS and examples.</p>
+              <p className="text-gray-500 text-sm mt-1">Flashcards with meaning, TTS and examples.</p>
+            </div>
+          </button>
+
+          <button
+            onClick={onOpenReviewQuiz}
+            className="bg-white p-6 rounded-3xl shadow-sm border-2 border-transparent hover:border-orange-200 hover:shadow-md transition-all text-left flex flex-col items-start gap-4 group"
+          >
+            <div className="bg-orange-100 text-orange-600 p-4 rounded-2xl group-hover:scale-110 transition-transform">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-8 h-8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-gray-800">Review Quiz</h3>
+              <p className="text-gray-500 text-sm mt-1">Test your memory with interactive quizzes.</p>
             </div>
           </button>
         </div>
       )}
 
-      {vocabulary.length === 0 && !isAdding ? (
+      {/* Loading State */}
+      {isLoading && vocabulary.length === 0 && !loadError && (
+        <div className="bg-white p-12 rounded-3xl shadow-sm border border-gray-100 text-center flex flex-col items-center">
+          <div className="w-12 h-12 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-500">Loading shared vocabulary...</p>
+        </div>
+      )}
+
+      {/* Error State */}
+      {loadError && (
+        <div className="bg-white p-12 rounded-3xl shadow-sm border-2 border-red-100 text-center flex flex-col items-center">
+          <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center text-red-400 mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-10 h-10">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-gray-800 mb-2">Could Not Load Vocabulary</h3>
+          <p className="text-red-500 text-sm mb-6 max-w-md">{loadError}</p>
+          <button 
+            onClick={loadVocabulary}
+            className="bg-brand-500 hover:bg-brand-600 text-white px-8 py-3 rounded-full font-bold shadow-md flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+            </svg>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Empty State - only show if not loading and no error */}
+      {!isLoading && !loadError && vocabulary.length === 0 && !isAdding && (
         <div className="bg-white p-12 rounded-3xl shadow-sm border border-gray-100 text-center flex flex-col items-center">
            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-4">
              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-10 h-10">
                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
              </svg>
            </div>
-           <h3 className="text-xl font-bold text-gray-800 mb-2">Your Bank is Empty</h3>
-           <p className="text-gray-500 mb-6">Start building your personal vocabulary list.</p>
+           <h3 className="text-xl font-bold text-gray-800 mb-2">Vocabulary Bank is Empty</h3>
+           <p className="text-gray-500 mb-6">No words have been added yet. Start building the shared vocabulary list!</p>
            <button 
              onClick={() => setIsAdding(true)}
              className="bg-brand-500 hover:bg-brand-600 text-white px-8 py-3 rounded-full font-bold shadow-md"
@@ -202,7 +276,10 @@ const VocabularyScreen: React.FC<VocabularyScreenProps> = ({ currentUser, onBack
              Add First Words
            </button>
         </div>
-      ) : (
+      )}
+
+      {/* Word List */}
+      {!loadError && vocabulary.length > 0 && (
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/50 flex justify-between items-center">
             <h4 className="font-bold text-gray-700">All Words ({vocabulary.length})</h4>

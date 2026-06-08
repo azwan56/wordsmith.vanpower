@@ -40,13 +40,35 @@ export const getSharedVocabulary = async (): Promise<VocabularyEntry[]> => {
   try {
     const q = query(collection(db, SHARED_VOCAB_COL), orderBy('addedAt', 'desc'));
     const snapshot = await getDocs(q);
+    console.log(`[Vocabulary] Loaded ${snapshot.docs.length} shared words from Firestore`);
     return snapshot.docs.map(d => ({
       ...(d.data() as VocabularyEntry),
       docId: d.id,
     }));
-  } catch (error) {
-    console.error('Failed to load shared vocabulary:', error);
-    return [];
+  } catch (error: any) {
+    console.error('[Vocabulary] Failed to load shared vocabulary:', error?.code, error?.message || error);
+
+    // Fallback: if orderBy fails due to missing index, try without ordering
+    if (error?.code === 'failed-precondition') {
+      console.warn('[Vocabulary] Falling back to unordered query...');
+      try {
+        const snapshot = await getDocs(collection(db, SHARED_VOCAB_COL));
+        const entries = snapshot.docs.map(d => ({
+          ...(d.data() as VocabularyEntry),
+          docId: d.id,
+        }));
+        // Sort in memory instead
+        entries.sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+        console.log(`[Vocabulary] Fallback loaded ${entries.length} words`);
+        return entries;
+      } catch (fallbackError: any) {
+        console.error('[Vocabulary] Fallback query also failed:', fallbackError?.code, fallbackError?.message);
+        throw fallbackError;
+      }
+    }
+
+    // Re-throw so the UI can display a meaningful error instead of showing "empty"
+    throw error;
   }
 };
 
@@ -57,13 +79,14 @@ export const getSharedBatches = async (): Promise<VocabularyBatch[]> => {
   try {
     const q = query(collection(db, SHARED_BATCHES_COL), orderBy('addedAt', 'desc'));
     const snapshot = await getDocs(q);
+    console.log(`[Vocabulary] Loaded ${snapshot.docs.length} shared batches from Firestore`);
     return snapshot.docs.map(d => ({
       ...(d.data() as VocabularyBatch),
       id: d.id,
     }));
-  } catch (error) {
-    console.error('Failed to load shared batches:', error);
-    return [];
+  } catch (error: any) {
+    console.error('[Vocabulary] Failed to load shared batches:', error?.code, error?.message || error);
+    throw error;
   }
 };
 
@@ -190,9 +213,40 @@ export const getUserPracticeRecords = async (userId: string): Promise<Map<string
 };
 
 /**
- * Update a user's practice record for a word after evaluation.
- * Updates bestScore only if new score is higher.
+ * SM-2 inspired SRS calculation.
+ * Returns { reviewInterval, easeFactor, nextReviewDate }.
  */
+const calculateSRS = (
+  score: number,
+  prevInterval: number = 1,
+  prevEaseFactor: number = 2.5
+): { reviewInterval: number; easeFactor: number; nextReviewDate: number } => {
+  // Normalize score from 1-5 to 0-5 scale for SM-2
+  const q = Math.max(0, score - 0); // score is already 1-5, treat 1 as poor
+  
+  let newEF = prevEaseFactor + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
+  newEF = Math.max(1.3, newEF); // EF never drops below 1.3
+  
+  let newInterval: number;
+  if (score <= 2) {
+    // Failed — reset to 1 day
+    newInterval = 1;
+  } else if (prevInterval <= 1) {
+    newInterval = 1;
+  } else if (prevInterval <= 6) {
+    newInterval = 6;
+  } else {
+    newInterval = Math.round(prevInterval * newEF);
+  }
+  
+  // Cap interval at 180 days
+  newInterval = Math.min(newInterval, 180);
+  
+  const nextReviewDate = Date.now() + newInterval * 24 * 60 * 60 * 1000;
+  
+  return { reviewInterval: newInterval, easeFactor: newEF, nextReviewDate };
+};
+
 export const updatePracticeRecord = async (
   userId: string,
   word: string,
@@ -205,18 +259,26 @@ export const updatePracticeRecord = async (
 
     if (existing.exists()) {
       const data = existing.data() as PracticeRecord;
+      const srs = calculateSRS(score, data.reviewInterval || 1, data.easeFactor || 2.5);
       await setDoc(docRef, {
         word: key,
         bestScore: Math.max(data.bestScore, score),
         lastPracticedAt: Date.now(),
         attempts: (data.attempts || 0) + 1,
+        reviewInterval: srs.reviewInterval,
+        easeFactor: srs.easeFactor,
+        nextReviewDate: srs.nextReviewDate,
       });
     } else {
+      const srs = calculateSRS(score);
       await setDoc(docRef, {
         word: key,
         bestScore: score,
         lastPracticedAt: Date.now(),
         attempts: 1,
+        reviewInterval: srs.reviewInterval,
+        easeFactor: srs.easeFactor,
+        nextReviewDate: srs.nextReviewDate,
       });
     }
   } catch (error) {
@@ -228,13 +290,37 @@ export const updatePracticeRecord = async (
 // --- Smart Word Selection ---
 
 /**
- * Select words intelligently for practice:
- *   1. Prioritize words the user has NEVER practiced (unpracticed)
- *   2. Then words scored < 4 stars (needsWork)
- *   3. Finally, shuffle in mastered words if needed
- * 
- * Returns `count` words.
+ * Get words that are due for review (past their nextReviewDate).
+ * Returns { count, words } for display on the UI.
  */
+export const getWordsDueForReview = async (
+  userId: string
+): Promise<{ count: number; words: VocabularyEntry[] }> => {
+  const [allVocab, practiceRecords] = await Promise.all([
+    getSharedVocabulary(),
+    getUserPracticeRecords(userId),
+  ]);
+
+  const now = Date.now();
+  const dueWords: VocabularyEntry[] = [];
+
+  for (const entry of allVocab) {
+    const record = practiceRecords.get(entry.word.toLowerCase());
+    if (record && record.nextReviewDate && record.nextReviewDate <= now) {
+      dueWords.push(entry);
+    }
+  }
+
+  // Sort by most overdue first
+  dueWords.sort((a, b) => {
+    const aRecord = practiceRecords.get(a.word.toLowerCase())!;
+    const bRecord = practiceRecords.get(b.word.toLowerCase())!;
+    return (aRecord.nextReviewDate || 0) - (bRecord.nextReviewDate || 0);
+  });
+
+  return { count: dueWords.length, words: dueWords };
+};
+
 export const getSmartWordSelection = async (
   userId: string,
   count: number = 10
@@ -246,7 +332,10 @@ export const getSmartWordSelection = async (
 
   if (allVocab.length === 0) return [];
 
-  // Categorize words
+  const now = Date.now();
+
+  // Categorize words with SRS awareness
+  const dueForReview: VocabularyEntry[] = [];  // SRS: past nextReviewDate
   const unpracticed: VocabularyEntry[] = [];
   const needsWork: VocabularyEntry[] = [];
   const mastered: VocabularyEntry[] = [];
@@ -255,6 +344,9 @@ export const getSmartWordSelection = async (
     const record = practiceRecords.get(entry.word.toLowerCase());
     if (!record) {
       unpracticed.push(entry);
+    } else if (record.nextReviewDate && record.nextReviewDate <= now) {
+      // Due for SRS review — highest priority among practiced words
+      dueForReview.push(entry);
     } else if (record.bestScore < 4) {
       needsWork.push(entry);
     } else {
@@ -272,8 +364,9 @@ export const getSmartWordSelection = async (
     return a;
   };
 
-  // Build selection: unpracticed first, then needsWork, then mastered
+  // Build selection: due reviews first, then unpracticed, then needsWork, then mastered
   const prioritized = [
+    ...shuffle(dueForReview),
     ...shuffle(unpracticed),
     ...shuffle(needsWork),
     ...shuffle(mastered),
@@ -287,5 +380,19 @@ export const getSmartWordSelection = async (
     partOfSpeech: v.partOfSpeech,
     definition: v.definition,
     synonyms: v.synonyms,
+    antonyms: v.antonyms,
+    example: v.example,
   }));
+};
+
+/**
+ * Get the count of mastered words (bestScore >= 4) for a user.
+ */
+export const getMasteredWordCount = async (userId: string): Promise<number> => {
+  const records = await getUserPracticeRecords(userId);
+  let count = 0;
+  records.forEach(record => {
+    if (record.bestScore >= 4) count++;
+  });
+  return count;
 };
